@@ -4,6 +4,14 @@ Reader for questaal quantum code output
 
 *NOTE: Soon to be combined with [pyquestaal](https://github.com/santoshkumarradha/pyquestaal)*
 
+### Installation and Examples
+
+place the questaal_reader.py file in the python bin and use after installing requirements.txt as
+```console
+ pip install -U -r requirements.txt
+ ```
+
+example usage shown in [example.ipynb](./example.ipynb)
 
 
 ### example usage
@@ -26,11 +34,3 @@ plt.show()
 produces the following plot
 <img src="./ehf-ehk.png" style="max-height: 40px; max-width: 40px;" >
 
-### Installation and Examples
-
-place the questaal_reader.py file in the python bin and use after installing requirements.txt as
-```console
- pip install -U -r requirements.txt
- ```
-
-example usage shown in [example.ipynb](./example.ipynb)
