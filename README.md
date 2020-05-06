@@ -1,12 +1,15 @@
-i# QUESTAAL READER
+# QUESTAAL READER
 
 Reader for questaal quantum code output
 
-NOTE: Soon to be combined with [pyquestaal](https://github.com/santoshkumarradha/pyquestaal)
+*NOTE: Soon to be combined with [pyquestaal](https://github.com/santoshkumarradha/pyquestaal)*
 
-Make sure you use high verbosity and ideally --pr51
 
-example usage
+
+### example usage
+Make sure you use high verbosity and ideally --pr51 and pipe lmf output to a file
+
+
 '''python
 from questaal_reader import *
 output=reader("out") #out is the output file name
@@ -21,7 +24,7 @@ plt.show()
 '''
 
 produces the following plot
-<img src="./ehf-ehk.png" style="max-height: 70px; max-width: 70px;" >
+<img src="./ehf-ehk.png" style="max-height: 40px; max-width: 40px;" >
 
 ### Installation and Examples
 
