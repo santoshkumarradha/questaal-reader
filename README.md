@@ -1,4 +1,4 @@
-# QUESTAAL READER
+i# QUESTAAL READER
 
 Reader for questaal quantum code output
 
@@ -10,7 +10,7 @@ Reader for questaal quantum code output
 Make sure you use high verbosity and ideally --pr51 and pipe lmf output to a file
 
 
-'''python
+```python
 from questaal_reader import *
 output=reader("out") #out is the output file name
 ehf=[i.ehf for i in output.iterations]
@@ -21,7 +21,7 @@ plt.ylabel("Energy (eV)")
 plt.xlabel("Iterations")
 plt.legend()
 plt.show()
-'''
+```
 
 produces the following plot
 <img src="./ehf-ehk.png" style="max-height: 40px; max-width: 40px;" >
