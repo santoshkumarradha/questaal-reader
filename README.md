@@ -33,4 +33,4 @@ place the questaal_reader.py file in the python bin and use after installing req
  pip install -U -r requirements.txt
  ```
 
-example usage shown in [example.ipynb](./examples.ipynb)
+example usage shown in [example.ipynb](./example.ipynb)
