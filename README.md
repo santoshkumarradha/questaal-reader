@@ -1,4 +1,4 @@
-i# QUESTAAL READER
+# QUESTAAL READER
 
 Reader for questaal quantum code output
 
