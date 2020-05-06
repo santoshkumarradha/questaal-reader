@@ -1,8 +1,10 @@
-# QUESTAAL READER
+i# QUESTAAL READER
 
 Reader for questaal quantum code output
 
-Note: Make sure you use high verbosity and ideally --pr51
+NOTE: Soon to be combined with [pyquestaal](https://github.com/santoshkumarradha/pyquestaal)
+
+Make sure you use high verbosity and ideally --pr51
 
 example usage
 '''python
