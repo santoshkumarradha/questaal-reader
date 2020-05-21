@@ -3,10 +3,22 @@ from pymatgen import Structure
 import numpy as np
 import os
 ry2ev = 13.605662285137
+from math import ceil
+from itertools import chain, product
+from pymatgen.electronic_structure.bandstructure import BandStructureSymmLine
+from pymatgen.electronic_structure.core import Spin, Orbital
+from pymatgen.core.lattice import Lattice
+#from sumo.io.questaal import QuestaalSite, labels_from_syml
+import numpy as np
+from pymatgen.core.structure import Structure
+import os
+import warnings
+import re
+_bohr_to_angstrom = 0.5291772
+_ry_to_ev = 13.605693009
 
 
 class reader:
-
     def __init__(self, output_file="output"):
         self.fname = output_file
         self.data = get_data(self.fname)
@@ -36,26 +48,17 @@ class reader:
 
     def get_variables(self):
         lst = {
-            "data":
-                "raw data string",
+            "data": "raw data string",
             "Iterations":
-                "Iteration object, further contains other data about iterations",
-            "structure":
-                "calculations structure (returns in pymatgen format",
-            "energy":
-                "total energy in (ev) of the final iteration (ehf)",
-            "ehf":
-                "final energy ehf",
-            "ehk":
-                "final energy ehk",
-            "atoms":
-                "species name in lmf codes",
-            "gap":
-                "final band gap from given k mesh (eV)",
-            "valance_band_max":
-                "valance band max energy in code(eV)",
-            "conduction_band_min":
-                "conduction band min in code (eV)"
+            "Iteration object, further contains other data about iterations",
+            "structure": "calculations structure (returns in pymatgen format",
+            "energy": "total energy in (ev) of the final iteration (ehf)",
+            "ehf": "final energy ehf",
+            "ehk": "final energy ehk",
+            "atoms": "species name in lmf codes",
+            "gap": "final band gap from given k mesh (eV)",
+            "valance_band_max": "valance band max energy in code(eV)",
+            "conduction_band_min": "conduction band min in code (eV)"
         }
         for i in lst:
             print(i, "-", lst[i])
@@ -72,9 +75,9 @@ def get_data(fname="output"):
 
 def get_lines(data, key, num_lines=0, return_index=False):
     '''
-	get the num_lines along with line matching "key" in data text
-	if return_index returns the index
-	'''
+    get the num_lines along with line matching "key" in data text
+    if return_index returns the index
+    '''
     index = [i for i, s in enumerate(data.splitlines()) if key in s]
     values = [data.splitlines()[i:i + num_lines + 1] for i in index]
     index_vals = [list(range(i, i + num_lines + 1)) for i in index]
@@ -98,8 +101,8 @@ def make_structure(data):
 
 def get_nbas(data):
     ''' 
-	Extract number of atoms
-	'''
+    Extract number of atoms
+    '''
     try:
         nbas = int(
             get_lines(data, "nbas")[0][0].partition('nbas = ')[2].split()[0])
@@ -110,8 +113,8 @@ def get_nbas(data):
 
 def get_species(data):
     '''
-	return species type for all atoms present
-	'''
+    return species type for all atoms present
+    '''
     natoms = get_nbas(data)
     return [
         ''.join(i[0].split()[-1].split(':')[::-1]).lower()
@@ -121,8 +124,8 @@ def get_species(data):
 
 def make_iterations(data):
     '''
-	make an iteration object to hold information
-	'''
+    make an iteration object to hold information
+    '''
     iterations = []
     for i in range(get_iter(data)):
         dummy = DotMap()
@@ -133,11 +136,12 @@ def make_iterations(data):
 
 def get_iter(data):
     '''
-	returns total num of iterations
-	'''
+    returns total num of iterations
+    '''
     return int(
-        get_lines(data, "iteration",
-                  return_index=False)[-1][0].split("iteration ")[-1].split()[0])
+        get_lines(
+            data, "iteration",
+            return_index=False)[-1][0].split("iteration ")[-1].split()[0])
 
 
 def get_z(data, natoms):
@@ -154,9 +158,9 @@ def get_z(data, natoms):
 
 def get_atomicpos(data, frac=True):
     '''
-	data: string with output
-	frac: bool returns frac coordinates 
-	'''
+    data: string with output
+    frac: bool returns frac coordinates 
+    '''
     natoms = get_nbas(data)
     if frac:
         start = 5
@@ -205,8 +209,8 @@ def set_iteration_energy(data, iterations):
 
 def get_charges(data, iterations=None):
     '''
-	get charge data for each iterations
-	'''
+    get charge data for each iterations
+    '''
     if iterations is None:
         iterations = make_iterations(data)
     for j in range(len(iterations)):
@@ -270,3 +274,262 @@ def set_band_data(data, iterations):
         iterations[i].valance_band_max = valance_band_max[i] * ry2ev
         iterations[i].conduction_band_min = conduction_band_min[i] * ry2ev
         iterations[i].gap = gap[i]
+
+
+#------------------- Helper for reading bnds file. make sure site file, bnds and syml file are present
+# -------- and
+
+
+# Class ported from Sumo
+class QuestaalSite(object):
+    def __init__(self,
+                 nbas,
+                 vn=3.,
+                 io=15,
+                 alat=1.,
+                 xpos=True,
+                 read='fast',
+                 sites=None,
+                 plat=[1, 0, 0, 0, 1, 0, 0, 0, 1]):
+        sites = sites or []
+        if nbas != len(sites):
+            raise AssertionError()
+        if len(plat) != 9:
+            raise AssertionError()
+
+        if read != 'fast':
+            raise Exception("Algebraic expressions not supported, use 'fast'")
+        if io != 15:
+            warnings.warn(
+                "Only site.ext format 15 supported at present \n if things dont work That might be the problem"
+            )
+
+        self.nbas, self.vn, self.io, self.alat = nbas, vn, io, alat
+        self.xpos, self.read, self.sites, self.plat = xpos, read, sites, plat
+
+        is_empty = re.compile('E\d*$')
+        empty_sites = [
+            site for site in sites
+            if is_empty.match(site['species']) is not None
+        ]
+        self.nbas_empty = len(empty_sites)
+
+    @property
+    def structure(self):
+        # Get lattice vectors in Angstrom
+        lattice = Lattice(self.plat)
+        lattice = Lattice(lattice.matrix * self.alat * _bohr_to_angstrom)
+
+        # Get corresponding lists of species and positions by making a list of
+        # pairs and unpacking with zip
+        if self.xpos:
+            species_coords = [(site['species'], site['pos'])
+                              for site in self.sites]
+            species, coords = zip(*species_coords)
+
+            return Structure(lattice,
+                             species,
+                             coords,
+                             coords_are_cartesian=False)
+        else:
+            species_coords = [
+                (site['species'],
+                 [x * self.alat * _bohr_to_angstrom for x in site['pos']])
+                for site in self.sites
+            ]
+            species, coords = zip(*species_coords)
+
+            return Structure(lattice,
+                             species,
+                             coords,
+                             coords_are_cartesian=True)
+
+    @classmethod
+    def from_file(cls, filename):
+        with open(filename, 'rt') as f:
+            lines = f.readlines()
+
+        header = lines[0]
+        sites = [line for line in lines if line[0] not in '#%']
+
+        # Some of the header info does not use '=' so handle separately
+        header_items = header.strip().split()
+        if header_items[0] != '%' or header_items[1] != 'site-data':
+            raise AssertionError()
+
+        xpos = True if 'xpos' in header_items else False
+        read = 'fast' if 'fast' in header_items else False
+
+        header_clean = ' '.join(x for x in header_items
+                                if x not in ('%', 'site-data', 'xpos', 'fast'))
+
+        tags = re.findall(r'(\w+)\s*=', header_clean)  # Find tags
+        # Split on tags to find tag parameters
+        tag_data = re.split(r'\s*\w+\s*=\s*', header_clean)[1:]
+        tag_dict = dict(zip(tags, tag_data))
+
+        vn = float(tag_dict['vn']) if 'vn' in tag_dict else 3.
+        io = int(tag_dict['io']) if 'io' in tag_dict else 15.
+        nbas = int(tag_dict['nbas']) if 'nbas' in tag_dict else 15.
+        alat = float(tag_dict['alat']) if 'alat' in tag_dict else 1.
+        plat = ([float(x) for x in tag_dict['plat'].split()]
+                if 'plat' in tag_dict else [1, 0, 0, 0, 1, 0, 0, 0, 1])
+
+        # Convert sites to structured format
+        # (If needed, could support other 'io' options here)
+        sites = [{
+            'species': site.split()[0],
+            'pos': [float(x) for x in site.split()[1:4]]
+        } for site in sites]
+
+        return cls(nbas,
+                   vn=vn,
+                   io=io,
+                   alat=alat,
+                   xpos=xpos,
+                   read=read,
+                   sites=sites,
+                   plat=plat)
+
+
+def labels_from_syml(syml_file):
+    labels = {}
+
+    with open(syml_file, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        npts, x1, y1, z1, x2, y2, z2, *label_text = line.split()
+        if len(label_text) < 3:
+            pass
+        else:
+            kpt1 = tuple(map(float, (x1, y1, z1)))
+            kpt2 = tuple(map(float, (x2, y2, z2)))
+
+            label_text = ' '.join(label_text)  # Undo previous split
+            label1_label2 = label_text.split(' to ')
+            if len(label1_label2) != 2:
+                raise ValueError("Not clear how to interpret labels from "
+                                 "this line: {}".format(line))
+            label1, label2 = label1_label2
+            labels.update({label1: kpt1, label2: kpt2})
+    return labels
+
+
+def get_bands(fname):
+    '''
+    returns a pymatgen BandStructureSymmLine object for easy plotting.
+    '''
+    filenames = [fname]
+    bnds_file = filenames[0]
+    ext = bnds_file.split('.')[-1]
+    bnds_folder = os.path.join(bnds_file, os.path.pardir)
+
+    site_file = os.path.abspath(
+        os.path.join(bnds_folder, 'site.{}'.format(ext)))
+
+    if os.path.isfile(site_file):
+        site_data = QuestaalSite.from_file(site_file)
+        bnds_lattice = site_data.structure.lattice
+        alat = site_data.alat
+    else:
+        raise IOError('Site file {} not found: '
+                      'needed to determine lattice'.format(site_file))
+
+    syml_file = os.path.abspath(
+        os.path.join(bnds_folder, 'syml.{}'.format(ext)))
+    if os.path.isfile(syml_file):
+        bnds_labels = labels_from_syml(syml_file)
+    else:
+        bnds_labels = {}
+
+    with open(bnds_file, 'r') as f:
+        kpoints = []
+
+        # Read heading, get metadata and check no orbital projections used
+        nbands, efermi, n_color_wts, *_ = f.readline().split()
+
+        if int(n_color_wts) > 0:
+            raise NotImplementedError(
+                "Band data includes orbital data: "
+                "this format is not currently supported.")
+
+        nbands, efermi = int(nbands), float(efermi)
+        eig_lines = ceil(nbands / 10)
+
+        # Check if first two kpts are the same: if so, assume there are two
+        # spin channels
+        _ = f.readline()
+        kpt1 = list(map(float, f.readline().split()))
+
+        for line in range(eig_lines):  # Skip over the eigenvalues
+            _ = f.readline()  # for now: re-read file later
+        kpt2 = list(map(float, f.readline().split()))
+        if len(kpt1) != 3 or len(kpt2) != 3:
+            raise AssertionError()
+
+        if kpt1 == kpt2:
+            spin_pol = True
+        else:
+            spin_pol = False
+
+    def _read_eigenvals(f, nlines):
+        lines = [f.readline() for i in range(nlines)]
+        # This statement is very "functional programming"; read it
+        # backwards.  List of split lines is "flattened" by chain into
+        # iterator of values; this is fed into map to make floats and
+        # stored to a list
+        return list(map(float, chain(*(line.split() for line in lines))))
+
+    with open(bnds_file, 'r') as f:
+        _ = f.readline()
+        if spin_pol:  # Need to read two spin channels
+            block_nkpts = int(f.readline().strip()) // 2
+            eigenvals = {Spin.up: [], Spin.down: []}
+        else:
+            block_nkpts = int(f.readline().strip())
+            eigenvals = {Spin.up: []}
+
+        while block_nkpts > 0:  # File should be terminated with a 0
+            for i in range(block_nkpts):
+                kpoint = list(map(float, f.readline().split()))
+                kpoints.append(np.array(kpoint) / (alat * _bohr_to_angstrom))
+
+                eigenvals[Spin.up].append(_read_eigenvals(f, eig_lines))
+
+                if spin_pol:
+                    spin_down_kpoint = list(map(float, f.readline().split()))
+                    if spin_down_kpoint != kpoint:
+                        raise AssertionError(
+                            "File interpreted as spin-polarised, but this"
+                            " kpoint only has one entry: {}".format(kpoint))
+                    eigenvals[Spin.down].append(_read_eigenvals(f, eig_lines))
+
+            block_nkpts = int(f.readline().strip())
+            if spin_pol:
+                block_nkpts = block_nkpts // 2
+    eigenvals = {
+        key: np.array(data).T * _ry_to_ev
+        for key, data in eigenvals.items()
+    }
+    efermi *= _ry_to_ev
+    if os.path.isfile(site_file):
+        site_data = QuestaalSite.from_file(site_file)
+        bnds_lattice = site_data.structure.lattice
+        alat = site_data.alat
+    coords_are_cartesian = True
+    labels = bnds_labels
+    if coords_are_cartesian:
+        for label, coords in labels.items():
+            labels[label] = np.array(coords) / (alat * _bohr_to_angstrom)
+    else:
+        for label, coords in labels.items():
+            labels[label] = np.dot(
+                coords,
+                bnds_lattice.reciprocal_lattice_crystallographic.matrix)
+    return BandStructureSymmLine(
+        kpoints,
+        eigenvals,
+        bnds_lattice.reciprocal_lattice_crystallographic,
+        efermi,
+        labels,
+        coords_are_cartesian=True)
